@@ -1,39 +1,37 @@
 name: Build UABEA Ubuntu
-
 on:
   push:
     branches: [ master ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
     - name: Checkout
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
         submodules: recursive
-
     - name: Install .NET Core
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 8.0.x
-
     - name: Restore
       run: dotnet restore
-
     - name: Build
       run: dotnet build --configuration Release --no-restore
-
     - name: Remove unused platforms
       run: find UABEANext4.Desktop/bin/Release/net8.0/runtimes/* -maxdepth 0 ! -name linux-x64 -type d -exec rm -r {} +
-      
     - name: Upload
       uses: actions/upload-artifact@v6
       with:
-        name: uabea-ubuntu
+        name: UABEANext-FixedEditTexture-ubuntu
         path: UABEANext4.Desktop/bin/Release/net8.0
+```
+
+После сохранения обоих файлов ссылки на nightly.link будут:
+```
+https://nightly.link/user110611/UABEANext/workflows/build-windows/master/UABEANext-FixedEditTexture-windows.zip
+https://nightly.link/user110611/UABEANext/workflows/build-ubuntu/master/UABEANext-FixedEditTexture-ubuntu.zip
