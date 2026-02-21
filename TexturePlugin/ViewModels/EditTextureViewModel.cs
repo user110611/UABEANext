@@ -1,6 +1,7 @@
-﻿using AssetsTools.NET;
+using AssetsTools.NET;
 using AssetsTools.NET.Texture;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using System.ComponentModel.DataAnnotations;
 using UABEANext4.AssetWorkspace;
 using UABEANext4.Interfaces;
@@ -11,14 +12,12 @@ using FilterModeEnm = TexturePlugin.Logic.EditTexture.FilterMode;
 using TextureFormatEnm = AssetsTools.NET.Texture.TextureFormat;
 using WrapModeEnm = TexturePlugin.Logic.EditTexture.WrapMode;
 
-// this could be uh... improved... but it'll work for now :D
 namespace TexturePlugin.ViewModels;
 public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware<EditTextureResult?>
 {
     [ObservableProperty]
     public bool _isSingleTexture;
 
-    // field properties
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NameWatermark))]
     public string? _name = "";
@@ -61,6 +60,15 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
     [ObservableProperty]
     public ColorSpaceEnm? _colorSpace = ColorSpaceEnm.Gamma;
 
+    // FIX: путь к новой текстуре
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LoadedTextureButtonLabel))]
+    public string? _loadedTexturePath = null;
+
+    public string LoadedTextureButtonLabel => _loadedTexturePath != null
+        ? Path.GetFileName(_loadedTexturePath)
+        : "Load texture...";
+
     // default fields
     private string? _defaultName;
     private TextureFormatEnm? _defaultTextureFormat;
@@ -74,29 +82,28 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
     private string? _defaultLightMapFormatString;
     private ColorSpaceEnm? _defaultColorSpace;
 
-    // textbox watermarks
     public string NameWatermark => Name is null ? "(Multiple values)" : "";
     public string FilteringWatermark => FilteringString is null ? "(Multiple values)" : "";
     public string MipBiasWatermark => MipBiasString is null ? "(Multiple values)" : "";
     public string LightMapFormatWatermark => LightMapFormatString is null ? "(Multiple values)" : "";
 
-    // checkbox three-states
     public bool UsingMipsThreeOn => UsingMips is null;
     public bool IsReadableThreeOn => IsReadable is null;
 
-    // combobox options
     public static TextureFormatEnm[] TextureFormats => Enum.GetValues<TextureFormatEnm>();
     public static FilterModeEnm[] FilterModes => Enum.GetValues<FilterModeEnm>();
     public static WrapModeEnm[] WrapModes => Enum.GetValues<WrapModeEnm>();
     public static ColorSpaceEnm[] ColorSpaces => Enum.GetValues<ColorSpaceEnm>();
 
-    public string Title => "Texture Edit";
+    public string Title => "Texture Edit  |  Load texture fixed by user110611";
     public int Width => 450;
     public int Height => 500;
-
     public bool IsModal => true;
 
     public event Action<EditTextureResult?>? RequestClose;
+
+    // FIX: функция для открытия диалога — устанавливается из EditTextureOption
+    private Func<Task<string?>>? _openFileDialogFunc;
 
     private readonly List<(AssetInst, AssetTypeValueField, TextureFile)> _textures = [];
 
@@ -117,6 +124,24 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
         SetDefaultValues();
     }
 
+    // FIX: метод для передачи функции открытия диалога из Option
+    public void SetOpenFileDialogFunc(Func<Task<string?>> func)
+    {
+        _openFileDialogFunc = func;
+    }
+
+    // FIX: команда кнопки Load texture
+    [RelayCommand]
+    public async Task LoadTexture()
+    {
+        if (_openFileDialogFunc == null)
+            return;
+
+        var path = await _openFileDialogFunc();
+        if (path != null)
+            LoadedTexturePath = path;
+    }
+
     public void SetDefaultValues()
     {
         string? name;
@@ -131,7 +156,6 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
         int? lightMapFormat;
         ColorSpaceEnm? colorSpace;
 
-        // can't do anything
         if (_textures.Count == 0)
             return;
 
@@ -158,28 +182,17 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
                 var textureFile = texture.Item3;
                 var textureSettings = textureFile.m_TextureSettings;
 
-                if (name != textureFile.m_Name)
-                    name = null;
-                if (textureFormat != (TextureFormatEnm)textureFile.m_TextureFormat)
-                    textureFormat = null;
-                if (usingMips != textureFile.m_MipMap)
-                    usingMips = null;
-                if (isReadable != textureFile.m_IsReadable)
-                    isReadable = null;
-                if (filterMode != (FilterModeEnm)textureSettings.m_FilterMode)
-                    filterMode = null;
-                if (filtering != textureSettings.m_Aniso)
-                    filtering = null;
-                if (mipBias != textureSettings.m_MipBias)
-                    mipBias = null;
-                if (wrapModeU != (WrapModeEnm)textureSettings.m_WrapU)
-                    wrapModeU = null;
-                if (wrapModeV != (WrapModeEnm)textureSettings.m_WrapV)
-                    wrapModeV = null;
-                if (lightMapFormat != textureFile.m_LightmapFormat)
-                    lightMapFormat = null;
-                if (colorSpace != (ColorSpaceEnm)textureFile.m_ColorSpace)
-                    colorSpace = null;
+                if (name != textureFile.m_Name) name = null;
+                if (textureFormat != (TextureFormatEnm)textureFile.m_TextureFormat) textureFormat = null;
+                if (usingMips != textureFile.m_MipMap) usingMips = null;
+                if (isReadable != textureFile.m_IsReadable) isReadable = null;
+                if (filterMode != (FilterModeEnm)textureSettings.m_FilterMode) filterMode = null;
+                if (filtering != textureSettings.m_Aniso) filtering = null;
+                if (mipBias != textureSettings.m_MipBias) mipBias = null;
+                if (wrapModeU != (WrapModeEnm)textureSettings.m_WrapU) wrapModeU = null;
+                if (wrapModeV != (WrapModeEnm)textureSettings.m_WrapV) wrapModeV = null;
+                if (lightMapFormat != textureFile.m_LightmapFormat) lightMapFormat = null;
+                if (colorSpace != (ColorSpaceEnm)textureFile.m_ColorSpace) colorSpace = null;
             }
         }
 
@@ -214,6 +227,7 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
             case 8: WrapModeV = _defaultWrapModeV; break;
             case 9: LightMapFormatString = _defaultLightMapFormatString; break;
             case 10: ColorSpace = _defaultColorSpace; break;
+            case 11: LoadedTexturePath = null; break;
         }
     }
 
@@ -276,7 +290,8 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
                 WrapModeU,
                 WrapModeV,
                 lightMapFormat,
-                ColorSpace
+                ColorSpace,
+                LoadedTexturePath
             )
         );
     }
@@ -292,7 +307,6 @@ public partial class EditTextureViewModel : ViewModelBaseValidator, IDialogAware
         {
             return new("Value must be an int");
         }
-
         return ValidationResult.Success;
     }
 
@@ -313,7 +327,8 @@ public readonly struct EditTextureResult(
     WrapModeEnm? wrapModeU,
     WrapModeEnm? wrapModeV,
     int? lightMapFormat,
-    ColorSpaceEnm? colorSpace)
+    ColorSpaceEnm? colorSpace,
+    string? newTexturePath = null)
 {
     public readonly string? Name = name;
     public readonly TextureFormatEnm? TextureFormat = textureFormat;
@@ -326,4 +341,5 @@ public readonly struct EditTextureResult(
     public readonly WrapModeEnm? WrapModeV = wrapModeV;
     public readonly int? LightMapFormat = lightMapFormat;
     public readonly ColorSpaceEnm? ColorSpace = colorSpace;
+    public readonly string? NewTexturePath = newTexturePath;
 }

@@ -1,5 +1,6 @@
-﻿using AssetsTools.NET.Extra;
+using AssetsTools.NET.Extra;
 using AssetsTools.NET.Texture;
+using Avalonia.Platform.Storage;
 using System.Text;
 using TexturePlugin.Helpers;
 using TexturePlugin.ViewModels;
@@ -17,9 +18,7 @@ public class EditTextureOption : IUavPluginOption
     public bool SupportsSelection(Workspace workspace, UavPluginMode mode, IList<AssetInst> selection)
     {
         if (mode != UavPluginMode.Export)
-        {
             return false;
-        }
 
         var texTypeId = (int)AssetClassID.Texture2D;
         return selection.All(a => a.TypeId == texTypeId);
@@ -28,15 +27,15 @@ public class EditTextureOption : IUavPluginOption
     public async Task<bool> Execute(Workspace workspace, IUavPluginFunctions funcs, UavPluginMode mode, IList<AssetInst> selection)
     {
         var editTextureVm = new EditTextureViewModel(workspace, selection);
+
+        // FIX: передаём функцию открытия диалога — без async лямбды, просто метод
+        editTextureVm.SetOpenFileDialogFunc(() => ShowLoadTextureDialog(funcs));
+
         var result = await funcs.ShowDialog(editTextureVm);
         if (!result.HasValue)
-        {
             return false;
-        }
 
         var editTexSettings = result.Value;
-
-        // todo: need to support single image import as well
 
         var errorBuilder = new StringBuilder();
         foreach (var asset in selection)
@@ -54,42 +53,24 @@ public class EditTextureOption : IUavPluginOption
 
             var needToReencode = false;
             if (editTexSettings.TextureFormat is not null)
-            {
                 needToReencode |= tex.m_TextureFormat != (int)editTexSettings.TextureFormat;
-            }
-            //if (editTexSettings.UsingMips is not null)
-            //{
-            //    // if we've toggled mips on, only make a change if the current
-            //    // mipcount is different from what we would change it to.
-            //    var usingMips = editTexSettings.UsingMips.Value;
-            //    if (usingMips)
-            //        needToReencode |= tex.m_MipCount == TextureHelper.GetMaxMipCount(tex.m_Width, tex.m_Height);
-            //    else
-            //        needToReencode |= tex.m_MipCount == 1;
-            //}
 
             byte[]? texOrigDecBytes = null;
             if (needToReencode)
             {
-                // decode the texture so we can reencode it in the next step
                 var texOrigEncBytes = tex.FillPictureData(asset.FileInstance);
                 if (texOrigEncBytes is null)
                 {
                     errorBuilder.AppendLine($"[{errorAssetName}]: failed to decode for reencoding");
                     continue;
                 }
-                else
-                {
-                    texOrigDecBytes = tex.DecodeTextureRaw(texOrigEncBytes, true);
-                }
+                texOrigDecBytes = tex.DecodeTextureRaw(texOrigEncBytes, true);
             }
 
             if (editTexSettings.Name is not null)
                 tex.m_Name = editTexSettings.Name;
             if (editTexSettings.TextureFormat is not null)
                 tex.m_TextureFormat = (int)editTexSettings.TextureFormat.Value;
-            //if (editTexSettings.UsingMips is not null)
-            //    tex.m_MipMap = editTexSettings.UsingMips.Value;
             if (editTexSettings.IsReadable is not null)
                 tex.m_IsReadable = editTexSettings.IsReadable.Value;
             if (editTexSettings.FilterMode is not null)
@@ -107,14 +88,26 @@ public class EditTextureOption : IUavPluginOption
             if (editTexSettings.ColorSpace is not null)
                 tex.m_ColorSpace = (int)editTexSettings.ColorSpace.Value;
 
-            if (needToReencode && texOrigDecBytes is not null)
+            // FIX: импорт новой текстуры если пользователь выбрал файл
+            if (editTexSettings.NewTexturePath is not null && File.Exists(editTexSettings.NewTexturePath))
             {
                 try
                 {
-                    // disable mips until we can support them
                     tex.m_MipCount = 1;
                     tex.m_MipMap = false;
-
+                    tex.EncodeTextureImage(editTexSettings.NewTexturePath);
+                }
+                catch (Exception e)
+                {
+                    errorBuilder.AppendLine($"[{errorAssetName}]: failed to import new texture: {e}");
+                }
+            }
+            else if (needToReencode && texOrigDecBytes is not null)
+            {
+                try
+                {
+                    tex.m_MipCount = 1;
+                    tex.m_MipMap = false;
                     tex.EncodeTextureRaw(texOrigDecBytes, tex.m_Width, tex.m_Height, 3, true);
                 }
                 catch (Exception e)
@@ -135,5 +128,30 @@ public class EditTextureOption : IUavPluginOption
         }
 
         return true;
+    }
+
+    // FIX: открываем диалог и берём первый выбранный файл из массива результатов
+    private static async Task<string?> ShowLoadTextureDialog(IUavPluginFunctions funcs)
+    {
+        var files = await funcs.ShowOpenFileDialog(new FilePickerOpenOptions()
+        {
+            Title = "Open texture",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Image files")
+                {
+                    Patterns = ["*.png", "*.bmp", "*.jpg", "*.jpeg", "*.tga"]
+                },
+                new FilePickerFileType("PNG file") { Patterns = ["*.png"] },
+                new FilePickerFileType("BMP file") { Patterns = ["*.bmp"] },
+                new FilePickerFileType("JPG file") { Patterns = ["*.jpg", "*.jpeg"] },
+                new FilePickerFileType("TGA file") { Patterns = ["*.tga"] },
+                FilePickerFileTypes.All,
+            ]
+        });
+
+        // ShowOpenFileDialog возвращает string[] — берём первый файл
+        return files?.FirstOrDefault();
     }
 }
